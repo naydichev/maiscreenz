@@ -33,9 +33,12 @@ def hash_for_file(f):
 def upload(event):
     # moved to a name with Screen Shot in it
     fileName = str(event.name)
-    if event.mask is 128 and file_str in fileName:
+    fileExtension = os.path.splitext(event.name)[1]
+    # if the file is too small, then it will be 256
+    # otherwise, it will be 128
+    # but fileExtension will equal png
+    if (event.mask is 128 or fileExtension == '.png') and file_str in fileName:
         # split the extension
-        fileExtension = os.path.splitext(event.name)[1]
         hash_str = hash_for_file(fileName)
         newName = hash_str[0:6] + fileExtension
         upload_file(fileName, scp_path + newName)
