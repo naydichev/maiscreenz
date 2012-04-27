@@ -40,16 +40,29 @@ def upload(event):
         # split the extension
         hash_str = hash_for_file(fileName)
         newName = hash_str[0:6] + fileExtension
-        upload_file(fileName, scp_path + newName)
+        try:
+            upload_file(fileName, scp_path + newName)
+        except:
+            if growl:
+                growl.notify(
+                        title       = "Failure",
+                        noteType    = "Failure",
+                        sticky      = False,
+                        priority    = 1,
+                        description = "Error, details: %s" % sys.exc_info()[1].message,
+                        )
+            else:
+                print sys.exc_info()[1].message()
+            return
         web_url = protocol + hostname + web_path + newName
         xerox.copy(web_url)
         if growl:
             growl.notify(
-                    title = "Upload Complete",
+                    title       = "Upload Complete",
+                    noteType    = "Upload Complete",
+                    sticky      = False,
+                    priority    = 1,
                     description = "Uploaded %s to %s" % (fileName, web_url),
-                    noteType = "Upload Complete",
-                    sticky = False,
-                    priority = 1,
                     )
         if del_after:
             os.remove(fileName)
@@ -67,7 +80,7 @@ def upload_file(local_file, remote_file):
 def register_growl():
     growl = gntp.notifier.GrowlNotifier(
             applicationName = "maiscreenz",
-            notifications = [ "Upload Complete" ],
+            notifications = [ "Upload Complete", "Failure" ],
             defaultNotifications = [ "Upload Complete" ],
             )
     growl.register()
