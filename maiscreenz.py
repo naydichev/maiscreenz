@@ -6,13 +6,14 @@ import sys, os, hashlib, paramiko, xerox, gntp.notifier
 #############
 # <configs> #
 #############
-hostname = 'my.di.af'
-protocol = 'http://'
-username = 'diaf'
-scp_path = 'html/'
-web_path = '/'
-file_str = 'Screen Shot'
-growl    = True
+hostname  = 'my.di.af'
+protocol  = 'http://'
+username  = 'diaf'
+scp_path  = 'html/'
+web_path  = '/'
+file_str  = 'Screen Shot'
+del_after = True
+growl     = True
 ##############
 # </configs> #
 ##############
@@ -34,10 +35,8 @@ def upload(event):
     # moved to a name with Screen Shot in it
     fileName = str(event.name)
     fileExtension = os.path.splitext(event.name)[1]
-    # if the file is too small, then it will be 256
-    # otherwise, it will be 128
-    # but fileExtension will equal png
-    if (event.mask is 128 or fileExtension == '.png') and file_str in fileName:
+
+    if event.mask in [128, 256] and file_str in fileName and fileExtension == '.png' and file_str in fileName:
         # split the extension
         hash_str = hash_for_file(fileName)
         newName = hash_str[0:6] + fileExtension
@@ -52,6 +51,8 @@ def upload(event):
                     sticky = False,
                     priority = 1,
                     )
+        if del_after:
+            os.remove(fileName)
 
 def upload_file(local_file, remote_file):
     client = paramiko.SSHClient()
