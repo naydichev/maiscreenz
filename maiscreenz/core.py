@@ -16,7 +16,7 @@ def load_config():
         if config.getboolean('maiscreenz', 'sample_data'):
             print 'Please update the config file (%s) and update the settings accordingly.  Once done, change sample_data to false' % __config__
             sys.exit(1)
-    except ConfigParser.NoSectionError, ConfigParser.NoOptionError:
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError):
         pass
 
     # setup our hashes
@@ -38,12 +38,9 @@ def load_config():
         sys.stderr.write( 'Please correct the config file (%s) and then rerun' % __config__ + "\n" )
         sys.exit(1)
     except ConfigParser.NoOptionError as err:
-        # sys.stderr.write( str(err) + "\n" )
+        sys.stderr.write( str(err) + "\n" )
         sys.stderr.write( 'Please correct the config file (%s) and then rerun' % __config__ + "\n" )
         sys.exit(1)
-
-    print __settings__
-    sys.exit(0)
 
 def hash_for_file(f):
     """ Generate a sha256 hexdigest for a file, so that we can give unique short names to our uploaded files. """
@@ -62,7 +59,7 @@ def growl(message, title = 'Upload Complete'):
         register_growl()
         __settings__['local']['growl_registered'] = True
 
-    growl.notify(
+    __settings__['local']['growl'].notify(
         title       = title,
         noteType    = title,
         sticky      = False,
@@ -82,7 +79,7 @@ def capture_event(event):
     fileName = str(event.name)
     fileExtension = os.path.splitext(event.name)[1]
 
-    if event.mask in [128, 256] and file_str in fileName:
+    if event.mask in [128, 256] and __settings__['local']['file_match'] in fileName and os.path.basename(fileName)[0] is not '.':
         hash_str = hash_for_file(fileName)
         newName = hash_str[0:6] + fileExtension
 
