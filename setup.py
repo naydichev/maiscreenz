@@ -1,15 +1,14 @@
 from setuptools import setup, find_packages
 from os.path import join, dirname
-import maiscreenz
 
 setup(
     name             = 'maiscreenz',
-    version          = maiscreenz.__version__,
+    version          = '0.2',
     packages         = find_packages(),
     long_description = open(join(dirname(__file__), 'README.md')).read(),
     entry_points     = {
         'console_scripts':
-            [ 'maiscreenz = maiscreenz.core:start_watching' ]
+            [ 'maiscreenz = maiscreenz.cli:main' ]
     },
     install_requires = [
         'gntp==0.7',
@@ -18,5 +17,3 @@ setup(
         'xerox==0.3.1',
     ],
 )
-
-maiscreenz.write_sample_config()
