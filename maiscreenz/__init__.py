@@ -25,6 +25,7 @@ class Maiscreenz:
         self.version     = __version__
         self.config_file = os.path.expanduser('~/.maiscreenzrc')
         self.settings    = {}
+        self.growlapi    = None
 
     def load_config(self):
         """ Load our config file and make sure that the user has updated it
@@ -92,6 +93,58 @@ class Maiscreenz:
             return False
         return True
 
+    def validate_config(self):
+        """ Tests the entries in the config file """
+        self.load_config()
+
+        # test various settings to ensure they're good
+
+        sshclient = paramiko.SSHClient()
+
+        # test loading keys
+        try:
+            sshclient.load_system_host_keys()
+        except IOError as err:
+            sys.stderr.write('Could not load ssh keys')
+            sys.stderr.write(str(err) + "\n")
+            return False
+
+        # test connecting
+        try:
+            sshclient.connect(
+                    self.settings['remote']['hostname'],
+                    username=self.settings['remote']['username']
+            )
+        except (BadHostKeyException, AuthenticationException,
+                SSHException, socket.error) as err:
+            sys.stderr.write("Could not connect to remote host")
+            sys.stderr.write(str(err) + "\n")
+            return False
+
+        # test permissions
+        command = 'touch ' + self.get_remote_path('.maiscreenztest')
+        try:
+            (_, _, stderr) = sshclient.exec_command(command)
+            data = stderr.read().lower()
+            if data.find('permission denied') != -1 or \
+               data.find('no such file') != -1:
+                sys.stderr.write('Permissions invalid on remote host')
+                return False
+        except SSHException as err:
+            sys.stderr.write('Could not touch sample file.')
+            sys.stderr.write(str(err) + "\n")
+            return False
+        finally:
+            stderr.close()
+
+        sshclient.close()
+
+        # test local path
+        if not os.path.exists(self.settings['local']['watch_path']):
+            sys.stderr.write('Watch path does not exist')
+            return False
+        return True
+
     def write_sample_config(self):
         """ Write out a sample configuration file for the user to edit.
         This will give some basis for the allowed fields. """
@@ -148,7 +201,7 @@ class Maiscreenz:
             self.register_growl()
             self.settings['local']['growl_registered'] = True
 
-        self.settings['local']['growl'].notify(
+        self.growlapi.notify(
             title       = title,
             noteType    = title,
             sticky      = False,
@@ -238,7 +291,7 @@ class Maiscreenz:
                 defaultNotifications = [ "Upload Complete" ],
                 )
         growl.register()
-        self.settings['local']['growl'] = growl
+        self.growlapi = growl
 
     def start_watching(self):
         """ Start watching our paths, and do the main work. """
