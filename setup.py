@@ -15,5 +15,6 @@ setup(
         'MacFSEvents==0.2.6',
         'paramiko==1.7.7.1',
         'xerox==0.3.1',
+        'boto==2.7.0',
     ],
 )

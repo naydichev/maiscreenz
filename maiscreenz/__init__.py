@@ -7,6 +7,7 @@ import hashlib
 import os
 import sys
 import socket
+import boto
 
 from fsevents import Stream, Observer
 import paramiko
@@ -23,7 +24,7 @@ class Maiscreenz:
     def __init__(self):
         """ Init our maiscreenz variables """
         self.version     = __version__
-        self.config_file = os.path.expanduser('~/.maiscreenzrc')
+        self.config_file = os.path.expanduser(os.environ.get('MAISCREENZRC', '~/.maiscreenzrc'))
         self.settings    = {}
         self.growlapi    = None
 
@@ -48,6 +49,7 @@ class Maiscreenz:
         # setup our hashes
         self.settings['remote'] = {}
         self.settings['local']  = { 'growl_registered' : False }
+        self.settings['s3']     = {}
 
         # and now fetch our values, if anything is missing, that's bad
         remote_settings = [
@@ -61,6 +63,14 @@ class Maiscreenz:
         local_settings = [
                 'file_match',
                 'watch_path',
+                ]
+        s3_settings = [
+                'access_key',
+                'secret_key',
+                'bucket',
+                ]
+        s3_bool = [
+                'use_s3',
                 ]
         bool_settings = [
                 'delete_after_upload',
@@ -78,6 +88,11 @@ class Maiscreenz:
             for item in bool_settings:
                 self.settings['local'][item] = \
                         config.getboolean('local_settings', item)
+
+            for item in s3_settings:
+                self.settings['s3'][item] = \
+                        config.get('s3_settings', item)
+            self.settings['s3']['use_s3'] = config.getboolean('s3_settings', 'use_s3')
         except (ConfigParser.NoSectionError, ConfigParser.NoOptionError) as err:
             sys.stderr.write(str(err) + "\n")
             sys.stderr.write(
@@ -99,6 +114,19 @@ class Maiscreenz:
 
         # test various settings to ensure they're good
 
+        # test local path
+        if not os.path.exists(self.settings['local']['watch_path']):
+            sys.stderr.write('Watch path does not exist')
+            return False
+
+        if not self.settings['s3']['use_s3']:
+            return self.test_ssh()
+        else:
+            return self.test_s3()
+
+        return False
+
+    def test_ssh(self):
         sshclient = paramiko.SSHClient()
 
         # test loading keys
@@ -139,10 +167,43 @@ class Maiscreenz:
 
         sshclient.close()
 
-        # test local path
-        if not os.path.exists(self.settings['local']['watch_path']):
-            sys.stderr.write('Watch path does not exist')
+    def test_s3(self):
+        s3 = boto.connect_s3(
+                self.settings['s3']['access_key'],
+                self.settings['s3']['secret_key']
+                )
+
+        try:
+            bucket = s3.get_bucket(self.settings['s3']['bucket'])
+        except boto.exception.S3ResponseError as err:
+            try:
+                bucket = s3.create_bucket(self.settings['s3']['bucket'])
+            except boto.exception.S3ResponseError as err:
+                sys.stderr.write(
+                        'Could not create bucket {0}: {1}\n'.format(
+                            self.settings['s3']['bucket'],
+                            str(err)
+                        )
+                    )
+                return False
+
+        key = bucket.new_key('.maiscreenztest')
+        value = 'asdfasa4aafa4yayaeasFAW$A$hgasa'
+        key.set_contents_from_string(value)
+        key.set_acl('public-read')
+
+        try:
+            contents = key.get_contents_as_string()
+            assert(contents == value);
+        except AssertionError as err:
+            sys.stderr.write(
+                    'Key value garbled: expected "{0}", got "{1}"\n'.format(
+                        value,
+                        contents
+                    )
+                )
             return False
+
         return True
 
     def write_sample_config(self):
@@ -159,9 +220,11 @@ class Maiscreenz:
         config.add_section('maiscreenz')
         config.set('maiscreenz', 'sample_data', 'true')
 
+        username = 'diaf'
+
         config.add_section('remote_settings')
         config.set('remote_settings', 'hostname', 'my.di.af')
-        config.set('remote_settings', 'username', 'diaf')
+        config.set('remote_settings', 'username', username)
         config.set('remote_settings', 'scp_path', 'html/')
         config.set('remote_settings', 'web_path', '/')
         config.set('remote_settings', 'protocol', 'http://')
@@ -172,6 +235,12 @@ class Maiscreenz:
         config.set('local_settings', 'use_growl', 'true')
         config.set('local_settings', 'watch_path', \
                 os.path.expanduser('~/Desktop'))
+
+        config.add_section('s3_settings')
+        config.set('s3_settings', 'use_s3', 'false')
+        config.set('s3_settings', 'access_key')
+        config.set('s3_settings', 'secret_key')
+        config.set('s3_settings', 'bucket', username + 'screenshots')
 
         with open( self.config_file, 'wb' ) as conffile:
             config.write( conffile )
@@ -229,14 +298,18 @@ class Maiscreenz:
             hash_str = self.hash_for_file(filename)
             newname = hash_str[0:6] + fileextension
 
-            if not self.upload_file(filename, self.get_remote_path(newname)):
-                self.growl(
-                        'Error uploading: %s' % sys.exc_info()[1].message,
-                        'Failure'
-                        )
-                return
+            web_url = ""
+            if not self.settings['s3']['use_s3']:
+                web_url = self.upload_file(filename, newname)
+                if web_url == None:
+                    self.growl(
+                            'Error uploading: %s' % sys.exc_info()[1].message,
+                            'Failure'
+                            )
+                    return
+            else:
+                web_url = self.copy_to_s3(filename, newname)
 
-            web_url = self.get_web_url(newname)
             xerox.copy(web_url)
 
             self.growl("%s uploaded to %s" % (filename, web_url))
@@ -256,7 +329,7 @@ class Maiscreenz:
         """ Generate the remote path for the new file. """
         return self.settings['remote']['scp_path'] + filename
 
-    def upload_file(self, local_file, remote_file):
+    def upload_file(self, local_file, remote_filename):
         """ Upload the local_file to the remote_file location. """
         client = paramiko.SSHClient()
 
@@ -264,7 +337,7 @@ class Maiscreenz:
             client.load_system_host_keys()
         except IOError as err:
             sys.stderr.write(str(err))
-            return False
+            return None
 
         try:
             client.connect(
@@ -274,14 +347,38 @@ class Maiscreenz:
         except (BadHostKeyException, AuthenticationException,
                 SSHException, socket.error) as err:
             sys.stderr.write(str(err))
-            return False
+            return None
 
         sftp = client.open_sftp()
-        sftp.put(local_file, remote_file)
+        sftp.put(local_file, self.get_remote_path(remote_file))
         sftp.close()
         client.close()
 
-        return True
+        return self.get_web_url(remote_filename)
+
+    def copy_to_s3(self, local_filename, newname):
+        """ Copies the local_file to s3 and returns the URL """
+        s3 = boto.connect_s3(
+                self.settings['s3']['access_key'],
+                self.settings['s3']['secret_key']
+            )
+        try:
+            bucket = s3.get_bucket(self.settings['s3']['bucket'])
+        except boto.exception.S3ResponseError as err:
+            sys.stderr.write(
+                    'Could not access bucket {0}: {1}\n'.format(
+                        self.settings['s3']['bucket'],
+                        str(err)
+                    )
+                )
+            return None
+
+        key = bucket.new_key(newname)
+        key.set_contents_from_filename(local_filename)
+        key.set_acl('public-read')
+
+
+        return 'https://s3-' + bucket.get_location() + '.amazonaws.com/' + bucket.name + '/' + key.name
 
     def register_growl(self):
         """ Registers with growl for notifications, only if enabled. """
