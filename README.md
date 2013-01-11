@@ -12,6 +12,7 @@ These are all installed via the setup process for you.
 - [paramiko][1]: for ssh magicsauce
 - [xerox][2]: for clipboard amazingness
 - [gntp][3]: a protocol for growling at you
+- [boto][4]: Amazon API (for S3 support)
 
 Known Bugs
 ----------
@@ -38,3 +39,4 @@ To-Do
 [1]: http://www.lag.net/paramiko
 [2]: https://github.com/kennethreitz/xerox
 [3]: https://github.com/kfdm/gntp/
+[4]: http://pypi.python.org/pypi/boto
