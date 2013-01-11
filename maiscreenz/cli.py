@@ -95,8 +95,11 @@ def install_daemon():
     """ % bin_path
 
     # if this does not pass, do not write the daemon
-    test_config(False)
-
+    config_tests = test_config()
+    if not config_tests:
+        sys.stderr.write('Tests failed, please fix the above.\n')
+        sys.exit(1)
+        
     with open(plist_path, 'w') as fhandle:
         fhandle.write(plist_data)
 
