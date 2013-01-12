@@ -350,7 +350,7 @@ class Maiscreenz:
             return None
 
         sftp = client.open_sftp()
-        sftp.put(local_file, self.get_remote_path(remote_file))
+        sftp.put(local_file, self.get_remote_path(remote_filename))
         sftp.close()
         client.close()
 
