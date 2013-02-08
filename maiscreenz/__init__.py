@@ -166,6 +166,7 @@ class Maiscreenz:
             stderr.close()
 
         sshclient.close()
+        return True
 
     def test_s3(self):
         s3 = boto.connect_s3(
