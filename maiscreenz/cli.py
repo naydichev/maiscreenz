@@ -119,6 +119,7 @@ def test_config(print_output=True):
 
     if result and print_output:
         print 'Tests pass!'
+        return True
     else:
         return result
 
